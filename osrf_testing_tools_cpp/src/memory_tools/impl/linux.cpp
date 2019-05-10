@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <dlfcn.h>
+#include <unistd.h>
 
 #include "./static_allocator.hpp"
 #include "./unix_common.hpp"
@@ -74,17 +75,29 @@ static __attribute__((constructor)) void __linux_memory_tools_init(void)
 extern "C"
 {
 
+static const char INIT_MSG[] = "Initializing Static Allocator\n";
+static const char SNOTCMP[] = "(static init not complete)\n";
+thread_local char INFO_BUF[256];
+thread_local unsigned int INFO_COUNT = 0;
+
 void *
 malloc(size_t size) noexcept
 {
+  INFO_COUNT++;
   if (!get_static_initialization_complete()) {
     if (nullptr == g_static_allocator) {
       // placement-new the static allocator
       // which is used while finding the original memory functions
+      write(1, INIT_MSG, sizeof(INIT_MSG));
       g_static_allocator = new (g_static_allocator_storage) StaticAllocatorT;
     }
+    write(1, SNOTCMP, sizeof(SNOTCMP));
+    size_t msglen = sprintf(INFO_BUF, "static malloc %zu B (#%u)\n", size, INFO_COUNT);
+    write(1, INFO_BUF, msglen);
     return g_static_allocator->allocate(size);
   }
+  size_t msglen = sprintf(INFO_BUF, "replac malloc %zu B (#%u)\n", size, INFO_COUNT);
+  write(1, INFO_BUF, msglen);
   return unix_replacement_malloc(size, g_original_malloc);
 }
 
